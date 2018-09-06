@@ -33,8 +33,6 @@ struct TestSet {
     char name[FUNCTION_NAME_LEN];
     list_head_t case_list;
     list_head_t failcase_list;
-    int count;
-    int fail;
 };
 
 struct GlobalDatas{
@@ -42,8 +40,10 @@ struct GlobalDatas{
     list_head_t failset_list;
     TestSet_t* current_set;
     TestCase_t* current_case;
-    int count; // set count
-    int fail; // fail sets count
+    int count_set; // set count
+    int count_case; // set count
+    int fail_set; // fail sets count
+    int fail_case;
     BOOL cur_case_failed;
     BOOL cur_set_failed;
 } k_global_data;
@@ -90,7 +90,7 @@ void knova_new_test(char* name) {
     list_add_tail(&new_set->set_list_node, &k_pGlobalData->set_list);
     dprintf("pos_set: %p\n", k_pGlobalData->set_list.next);
     k_pGlobalData->current_set = new_set;
-    k_pGlobalData->count++;
+    k_pGlobalData->count_set++;
     return;
 }
 
@@ -98,7 +98,7 @@ void knova_add_case(TEST_CASE case_func) {
     TestCase_t* new_case = (TestCase_t*)calloc(sizeof(TestCase_t), 1);
     dprintf("set_case:%p\n", new_case);
     list_add_tail(&new_case->case_list_node, &k_pGlobalData->current_set->case_list);
-    k_pGlobalData->current_set->count++;
+    k_pGlobalData->count_case++;
     new_case->case_func = case_func;
     LIST_HEAD_INIT2(&new_case->failmsg_list);
     k_pGlobalData->current_case = new_case;
@@ -107,8 +107,8 @@ void knova_add_case(TEST_CASE case_func) {
 
 #define KNOVA_TEST_TRUE(in) knova_test_true(in, #in, __FILE__, __FUNCTION__, __LINE__)
 #define KNOVA_TEST_FALSE(in) knova_test_false(in, #in, __FILE__, __FUNCTION__, __LINE__)
-#define KNOVA_TEST_STR_EQUAL(a,b) knova_test_str_equal(a, #a, b, #b, __FILE__, __FUNCTION__, __LINE__)
-#define KNOVA_TEST_STRUCT_EQUAL(type, a, b) knova_test_struct_equal(sizeof(type), a, #a, b, #b, __FILE__, __FUNCTION__, ___LINE___)
+#define KNOVA_TEST_STR_EQUAL(a,b) knova_test_str_equal(a, b, #a, #b, __FILE__, __FUNCTION__, __LINE__)
+#define KNOVA_TEST_STRUCT_EQUAL(type, a, b) knova_test_struct_equal(sizeof(type), a, b, #a, #b, __FILE__, __FUNCTION__, __LINE__)
 void knova_test_true(BOOL in, char* in_str, const char* file, const char* func, int line) {
     if(in != TRUE) {
         k_pGlobalData->cur_case_failed = TRUE;
@@ -145,7 +145,7 @@ BOOL k_test_str_equal(const char* a, const char* b) {
 
 void knova_test_str_equal(const char* a, const char* b,
  char* a_str, char* b_str, const char* file, const char* func, int line) {
-    if(k_test_str_equal(a,b)) {
+    if(!k_test_str_equal(a,b)) {
         k_pGlobalData->cur_case_failed = TRUE;
         FailMsg_t* new_msg = (FailMsg_t*)calloc(sizeof(FailMsg_t), 1);
         sprintf(new_msg->msg, "in file[%s] %s(), line: %d; [%s] and [%s] suppose to be equal, but not", file, func, line, a_str, b_str);
@@ -158,7 +158,7 @@ BOOL k_test_struct_equal(int size, void* a, void* b) {
 }
 void knova_test_struct_equal(int size, void* a, void* b,
  char* a_str, char* b_str, const char* file, const char* func, int line) {
-     if(k_test_struct_equal(size, a, b)) {
+     if(!k_test_struct_equal(size, a, b)) {
         FailMsg_t* new_msg = (FailMsg_t*)calloc(sizeof(FailMsg_t), 1);
         sprintf(new_msg->msg, "in file[%s] %s(), line: %d; [%s] and [%s] suppose to be equal, but not", file, func, line, a_str, b_str);
         list_add_tail(&new_msg->failmsg_node, &k_pGlobalData->current_case->failmsg_list);
@@ -191,21 +191,22 @@ void knova_test_run_all() {
                 if (!k_pGlobalData->cur_set_failed) {
                     k_pGlobalData->cur_set_failed = TRUE;
                     list_add_tail(&cur_set->fail_set_node, &k_pGlobalData->failset_list);
+                    k_pGlobalData->fail_set++;
                 }
-                k_pGlobalData->fail++;
+                k_pGlobalData->fail_case++;
             }
         }
         k_pGlobalData->cur_set_failed = FALSE;
     }
     // set loop
-    printf("Test Done!");
-    printf("totally [%d] test runed.\n", k_pGlobalData->count);
-    if (k_pGlobalData->fail == 0) {
+    printf("Test Done!\n");
+    printf("totally [%d]tests [%d]cases runed.\n", k_pGlobalData->count_set, k_pGlobalData->count_case);
+    if (k_pGlobalData->fail_set == 0) {
         printf("all pased!");
         return;
     }
     else {
-        printf("totally [%d] cases failed.\n", k_pGlobalData->fail);
+        printf("totally [%d]tests [%d]cases failed.\n", k_pGlobalData->fail_set, k_pGlobalData->fail_case);
         int no_failset = 0, no_failcase = 0;
         head_set = &k_pGlobalData->failset_list;
         list_head_t* head_failmsg, *pos_failmsg;
@@ -213,7 +214,7 @@ void knova_test_run_all() {
         list_for_each(pos_set, head_set) {
             no_failset++;
             cur_set = list_entry(pos_set, TestSet_t, fail_set_node);
-            printf("\n======Fail set[%d] [%s]:======\n", no_failset, cur_set->name);
+            printf("\n======Fail test[%d] [%s]:======\n", no_failset, cur_set->name);
             head_case = &cur_set->failcase_list;
             no_failcase = 0;
             list_for_each(pos_case, head_case) {
